@@ -99,8 +99,7 @@ class TestFetchExpirations:
         mock_tk = MagicMock()
         mock_tk.options = ()
         mock_ticker_cls.return_value = mock_tk
-
-        with pytest.raises(MarketDataError, match="No option expirations"):
+        with pytest.raises(MarketDataError, match="No options chain available"):
             MarketDataFetcher.fetch_expirations("INVALID")
 
 

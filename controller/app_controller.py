@@ -18,8 +18,9 @@ from datetime import datetime, date
 import logging
 
 import numpy as np
-
+import pandas as pd
 from PyQt6.QtCore import QObject, QThread, QTimer, pyqtSignal, pyqtSlot
+from PyQt6.QtWidgets import QMessageBox
 
 from engine.data_fetcher import MarketDataFetcher, MarketDataError
 from engine.strategy import OptionLeg, Strategy, GREEK_NAMES
@@ -110,7 +111,7 @@ class AppController(QObject):
     """Connects ControlPanel + OptionChain signals → Engine → Charts."""
 
     def __init__(self, control_panel, option_chain, pnl_chart, greek_chart,
-                 surface_chart, sensitivity_chart, summary_bar):
+                 surface_chart, sensitivity_chart, summary_panel):
         super().__init__()
 
         self.cp = control_panel
@@ -119,7 +120,7 @@ class AppController(QObject):
         self.greek_chart = greek_chart
         self.surface_chart = surface_chart
         self.sensitivity_chart = sensitivity_chart
-        self.summary_bar = summary_bar
+        self.summary_panel = summary_panel
 
         # State
         self._ticker = ""
@@ -183,7 +184,7 @@ class AppController(QObject):
 
         self.cp.set_spot_info(self._spot, self._rate, self._div_yield)
         self.cp.set_expirations(self._expirations)
-        self.cp.rate_slider.reset(self._rate)
+        self.cp.rate_slider.reset(self._rate * 100.0)
         self.cp.set_status(
             f"\u2713 {self._ticker}  |  {len(self._expirations)} expirations",
             Colors.ACCENT_GREEN,
@@ -197,6 +198,7 @@ class AppController(QObject):
     def _on_fetch_error(self, msg: str):
         self.cp.set_status(f"\u2717 {msg}", Colors.ACCENT_RED)
         self.cp.fetch_btn.setEnabled(True)
+        QMessageBox.warning(self.main_window, "Market Data Error", msg)
 
     # ----- Chain fetch (threaded) ------------------------------------------
 
@@ -600,25 +602,25 @@ class AppController(QObject):
             )
 
     def _update_summary(self):
-        """Update the summary bar with net Greeks."""
         if not self._strategy.legs:
-            self.summary_bar.clear_summary()
+            self.main_window.summary_panel.clear_summary()
             return
+        
         iv_shift = self.cp.iv_shift
         offset = self._dte_offset()
-        self._strategy.spot = self._spot
-
-        # Net Greeks at spot, using per-leg T
         S = np.array([self._spot])
+        
         greeks = {}
-        for name in GREEK_NAMES:
+        for name in ["delta", "gamma", "theta", "vega", "rho"]:
             val = self._strategy.total_greek(
                 name, S, iv_shift=iv_shift, dte_offset_days=offset,
             )
             greeks[name] = float(val[0])
 
         spot_range = self._spot_range()
-        pnl_exp = self._strategy.total_pnl(spot_range, T=1e-7, iv_shift=iv_shift)
+        nearest_dte = self._strategy.nearest_dte()
+        pnl_exp = self._strategy.total_pnl(spot_range, iv_shift=iv_shift, dte_offset_days=nearest_dte)
+        
         max_profit = float(np.max(pnl_exp))
         max_loss = float(np.min(pnl_exp))
 
@@ -630,4 +632,4 @@ class AppController(QObject):
                 be = x0 - y0 * (x1 - x0) / (y1 - y0)
                 breakevens.append(be)
 
-        self.summary_bar.update_summary(greeks, max_profit, max_loss, breakevens)
+        self.main_window.summary_panel.update_summary(greeks, max_profit, max_loss, breakevens)

@@ -52,13 +52,13 @@ class GreekChart(QWidget):
 
         # Crosshair readout label
         self._readout = QLabel("")
-        self._readout.setFont(QFont(Fonts.MONO.split(",")[0].strip(), Fonts.SIZE_XS))
+        self._readout.setFont(QFont(Fonts.MONO.split(",")[0].strip(), 12, QFont.Weight.Bold))
         self._readout.setStyleSheet(
-            f"color: {Colors.TEXT_PRIMARY}; background: {Colors.BG_SURFACE}CC;"
-            f"padding: 4px 8px; border-radius: 4px;"
+            f"color: {Colors.TEXT_PRIMARY}; background: {Colors.BG_SURFACE}DD;"
+            f"padding: 6px 10px; border-radius: 4px; border: 1px solid {Colors.BORDER};"
         )
         self._readout.setAlignment(Qt.AlignmentFlag.AlignLeft)
-        self._readout.setFixedHeight(20)
+        self._readout.setFixedHeight(28)
         layout.addWidget(self._readout)
 
         # Graphics layout for subplots
@@ -90,13 +90,33 @@ class GreekChart(QWidget):
 
             # Only show x-axis label on bottom subplot
             if i == _NUM_SUBPLOTS - 1:
-                plot.setLabel("bottom", "Underlying Price", color=Colors.TEXT_SECONDARY)
+                plot.setLabel("bottom", "Underlying Price", color=Colors.TEXT_SECONDARY, **{"font-size": "13pt"})
             else:
                 plot.showAxis("bottom", False)
 
             plot.setLabel("left", _SUBPLOT_TITLES[i], color=Colors.TEXT_SECONDARY,
-                         **{"font-size": "9px"})
+                         **{"font-size": "13pt"})
             plot.showGrid(x=True, y=True, alpha=0.12)
+
+            if i == 0:
+                # Set up secondary axis for Gamma
+                self.vb_gamma = pg.ViewBox()
+                plot.scene().addItem(self.vb_gamma)
+                self.vb_gamma.setXLink(plot.vb)
+
+                plot.showAxis('right')
+                right_axis = plot.getAxis('right')
+                right_axis.linkToView(self.vb_gamma)
+                
+                # Match Gamma color
+                right_axis.setPen(pg.mkPen(Colors.ACCENT_GREEN, width=1))
+                right_axis.setTextPen(pg.mkPen(Colors.ACCENT_GREEN))
+
+                def updateViews(view=plot.vb, linked_view=self.vb_gamma):
+                    linked_view.setGeometry(view.sceneBoundingRect())
+                    linked_view.linkedViewChanged(view, linked_view.XAxis)
+
+                plot.vb.sigResized.connect(updateViews)
 
             # Zero line
             zero = pg.InfiniteLine(
@@ -118,8 +138,8 @@ class GreekChart(QWidget):
 
             # Legend — anchored top-right
             plot.addLegend(
-                offset=(-10, 5),
-                brush=pg.mkBrush(Colors.BG_SURFACE + "CC"),
+                offset=(-10, 10),
+                brush=pg.mkBrush(0, 0, 0, 200),  # semi-transparent background
                 pen=pg.mkPen(Colors.BORDER),
                 labelTextColor=Colors.TEXT_PRIMARY,
             )
@@ -187,6 +207,11 @@ class GreekChart(QWidget):
         """
         # Clear old curves
         for curve in self._curves.values():
+            if hasattr(self, "vb_gamma"):
+                try:
+                    self.vb_gamma.removeItem(curve)
+                except Exception:
+                    pass
             for plot in self._plots:
                 try:
                     plot.removeItem(curve)
@@ -217,7 +242,16 @@ class GreekChart(QWidget):
             values = greeks[name]
             plot = self._plots[subplot_idx]
             pen = pg.mkPen(color, width=width)
-            curve = plot.plot(spot_range, values, pen=pen, name=display)
+            
+            if name == "gamma" and hasattr(self, "vb_gamma"):
+                # Draw Gamma on the secondary ViewBox
+                curve = pg.PlotDataItem(spot_range, values, pen=pen, name=display)
+                self.vb_gamma.addItem(curve)
+                if plot.legend:
+                    plot.legend.addItem(curve, display)
+            else:
+                curve = plot.plot(spot_range, values, pen=pen, name=display)
+                
             self._curves[name] = curve
             self._data[name] = (spot_range, values)
 

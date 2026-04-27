@@ -59,7 +59,7 @@ def main():
         greek_chart=window.greek_chart,
         surface_chart=window.surface_chart,
         sensitivity_chart=window.sensitivity_chart,
-        summary_bar=window.summary_bar,
+        summary_panel=window.summary_panel,
     )
 
     # Keep a reference so it doesn't get garbage-collected

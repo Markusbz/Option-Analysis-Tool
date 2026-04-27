@@ -25,73 +25,7 @@ from ui.charts.surface_chart import SurfaceChart
 from ui.charts.sensitivity_chart import SensitivityChart
 
 
-class SummaryBar(QFrame):
-    """Bottom bar showing net Greeks, max profit/loss, and breakevens."""
-
-    def __init__(self, parent=None):
-        super().__init__(parent)
-        self.setFixedHeight(56)
-        self.setStyleSheet(
-            f"background-color: {Colors.BG_SURFACE};"
-            f"border-top: 1px solid {Colors.BORDER};"
-        )
-        self._layout = QHBoxLayout(self)
-        self._layout.setContentsMargins(20, 0, 20, 0)
-        self._layout.setSpacing(24)
-        self._labels: dict[str, QLabel] = {}
-
-        mono = QFont(Fonts.MONO.split(",")[0].strip(), Fonts.SIZE_SM)
-
-        for key, display, color in [
-            ("delta", "Δ Delta", Colors.ACCENT_BLUE),
-            ("gamma", "Γ Gamma", Colors.ACCENT_GREEN),
-            ("theta", "Θ Theta", Colors.ACCENT_ORANGE),
-            ("vega", "ν Vega", Colors.ACCENT_PURPLE),
-            ("rho", "ρ Rho", Colors.ACCENT_CYAN),
-            ("max_profit", "Max Profit", Colors.ACCENT_GREEN),
-            ("max_loss", "Max Loss", Colors.ACCENT_RED),
-            ("breakevens", "Breakevens", Colors.TEXT_PRIMARY),
-        ]:
-            container = QWidget()
-            vl = QVBoxLayout(container)
-            vl.setContentsMargins(0, 4, 0, 4)
-            vl.setSpacing(0)
-
-            title = QLabel(display)
-            title.setStyleSheet(
-                f"color: {Colors.TEXT_SECONDARY}; font-size: 9px; font-weight: 600;"
-            )
-            title.setAlignment(Qt.AlignmentFlag.AlignCenter)
-
-            value = QLabel("—")
-            value.setFont(mono)
-            value.setStyleSheet(f"color: {color};")
-            value.setAlignment(Qt.AlignmentFlag.AlignCenter)
-
-            vl.addWidget(title)
-            vl.addWidget(value)
-
-            self._labels[key] = value
-            self._layout.addWidget(container)
-
-    def update_summary(self, greeks: dict, max_profit: float,
-                       max_loss: float, breakevens: list[float]):
-        for name in ("delta", "gamma", "theta", "vega", "rho"):
-            val = greeks.get(name, 0.0)
-            self._labels[name].setText(f"{val:+.2f}")
-
-        self._labels["max_profit"].setText(f"${max_profit:+,.0f}")
-        self._labels["max_loss"].setText(f"${max_loss:+,.0f}")
-
-        if breakevens:
-            be_str = " / ".join(f"${b:.1f}" for b in breakevens[:3])
-        else:
-            be_str = "—"
-        self._labels["breakevens"].setText(be_str)
-
-    def clear_summary(self):
-        for lbl in self._labels.values():
-            lbl.setText("—")
+from ui.summary_panel import SummaryPanel
 
 
 class MainWindow(QMainWindow):
@@ -121,9 +55,20 @@ class MainWindow(QMainWindow):
         center_splitter = QSplitter(Qt.Orientation.Vertical)
         center_splitter.setHandleWidth(1)
 
-        # Option chain
+        # Option chain + Summary Panel
+        chain_row = QWidget()
+        chain_row.setMaximumHeight(300)
+        chain_layout = QHBoxLayout(chain_row)
+        chain_layout.setContentsMargins(0, 0, 0, 0)
+        chain_layout.setSpacing(0)
+        
         self.option_chain = OptionChainWidget()
-        center_splitter.addWidget(self.option_chain)
+        self.summary_panel = SummaryPanel()
+        
+        chain_layout.addWidget(self.option_chain, stretch=1)
+        chain_layout.addWidget(self.summary_panel)
+        
+        center_splitter.addWidget(chain_row)
 
         # Chart grid (2×2 nested splitters)
         chart_grid = QSplitter(Qt.Orientation.Vertical)
@@ -152,7 +97,7 @@ class MainWindow(QMainWindow):
         chart_grid.setSizes([400, 400])
 
         center_splitter.addWidget(chart_grid)
-        center_splitter.setSizes([250, 700])
+        center_splitter.setSizes([150, 900])
 
         main_splitter.addWidget(center_splitter)
         main_splitter.setSizes([300, 1200])
@@ -160,6 +105,4 @@ class MainWindow(QMainWindow):
 
         root.addWidget(main_splitter, stretch=1)
 
-        # ---- Bottom: summary bar ----
-        self.summary_bar = SummaryBar()
-        root.addWidget(self.summary_bar)
+

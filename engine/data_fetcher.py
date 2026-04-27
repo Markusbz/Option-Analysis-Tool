@@ -116,9 +116,9 @@ class MarketDataFetcher:
         try:
             tk = yf.Ticker(ticker)
             expirations = tk.options
-            if not expirations:
+            if not isinstance(expirations, (list, tuple)) or len(expirations) == 0:
                 raise MarketDataError(
-                    f"No option expirations found for '{ticker}'."
+                    f"No options chain available for '{ticker}' on Yahoo Finance."
                 )
             return list(expirations)
         except MarketDataError:

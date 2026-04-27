@@ -75,19 +75,19 @@ class OptionChainWidget(QWidget):
         header_row = QHBoxLayout()
         calls_label = QLabel("CALLS")
         calls_label.setStyleSheet(
-            f"color: {Colors.ACCENT_GREEN}; font-weight: 600; font-size: {Fonts.SIZE_XS}px;"
+            f"color: {Colors.ACCENT_GREEN}; font-weight: bold; font-size: 14px;"
         )
         calls_label.setAlignment(Qt.AlignmentFlag.AlignLeft)
 
         strike_label = QLabel("STRIKE")
         strike_label.setStyleSheet(
-            f"color: {Colors.TEXT_SECONDARY}; font-weight: 600; font-size: {Fonts.SIZE_XS}px;"
+            f"color: {Colors.TEXT_SECONDARY}; font-weight: bold; font-size: 14px;"
         )
         strike_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
 
         puts_label = QLabel("PUTS")
         puts_label.setStyleSheet(
-            f"color: {Colors.ACCENT_RED}; font-weight: 600; font-size: {Fonts.SIZE_XS}px;"
+            f"color: {Colors.ACCENT_RED}; font-weight: bold; font-size: 14px;"
         )
         puts_label.setAlignment(Qt.AlignmentFlag.AlignRight)
 
@@ -118,7 +118,7 @@ class OptionChainWidget(QWidget):
                 header.setSectionResizeMode(col, QHeaderView.ResizeMode.ResizeToContents)
 
         # Minimal row height
-        self.table.verticalHeader().setDefaultSectionSize(22)
+        self.table.verticalHeader().setDefaultSectionSize(17)
 
         # Style
         self.table.setStyleSheet(f"""
@@ -131,7 +131,7 @@ class OptionChainWidget(QWidget):
                 font-size: {Fonts.SIZE_XS}px;
             }}
             QTableWidget::item {{
-                padding: 1px 4px;
+                padding: 0px 4px;
                 border-bottom: 1px solid {Colors.BORDER};
             }}
             QHeaderView::section {{
@@ -140,8 +140,8 @@ class OptionChainWidget(QWidget):
                 border: none;
                 border-bottom: 1px solid {Colors.BORDER};
                 padding: 3px 4px;
-                font-weight: 600;
-                font-size: 9px;
+                font-weight: bold;
+                font-size: 11px;
             }}
         """)
 

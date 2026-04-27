@@ -12,6 +12,7 @@ import json
 
 import numpy as np
 from PyQt6.QtWebEngineWidgets import QWebEngineView
+from PyQt6.QtWebEngineCore import QWebEnginePage
 from PyQt6.QtCore import QUrl
 
 import plotly.graph_objects as go
@@ -20,11 +21,20 @@ from plotly.io import to_html
 from ui.theme import Colors
 
 
+class _QuietWebEnginePage(QWebEnginePage):
+    """Custom page to suppress Chromium Canvas2D warnings."""
+    def javaScriptConsoleMessage(self, level, message, lineNumber, sourceID):
+        if "Canvas2D:" in message and "willReadFrequently" in message:
+            return
+        super().javaScriptConsoleMessage(level, message, lineNumber, sourceID)
+
+
 class SurfaceChart(QWebEngineView):
     """3D Greek surface rendered via Plotly inside a QWebEngineView."""
 
     def __init__(self, parent=None):
         super().__init__(parent)
+        self.setPage(_QuietWebEnginePage(self))
         self.setStyleSheet(f"background-color: {Colors.CHART_BG}; border: none;")
         # Show a blank dark page initially
         self._show_placeholder()
