@@ -603,7 +603,7 @@ class AppController(QObject):
 
     def _update_summary(self):
         if not self._strategy.legs:
-            self.main_window.summary_panel.clear_summary()
+            self.summary_panel.clear_summary()
             return
         
         iv_shift = self.cp.iv_shift
@@ -615,7 +615,15 @@ class AppController(QObject):
             val = self._strategy.total_greek(
                 name, S, iv_shift=iv_shift, dte_offset_days=offset,
             )
-            greeks[name] = float(val[0])
+            v = float(val[0])
+            
+            # Apply standard display scaling
+            if name == "theta":
+                v /= 365.0
+            elif name in ("vega", "rho"):
+                v /= 100.0
+                
+            greeks[name] = v
 
         spot_range = self._spot_range()
         nearest_dte = self._strategy.nearest_dte()
@@ -632,4 +640,4 @@ class AppController(QObject):
                 be = x0 - y0 * (x1 - x0) / (y1 - y0)
                 breakevens.append(be)
 
-        self.main_window.summary_panel.update_summary(greeks, max_profit, max_loss, breakevens)
+        self.summary_panel.update_summary(greeks, max_profit, max_loss, breakevens)
