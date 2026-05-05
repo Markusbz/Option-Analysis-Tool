@@ -161,6 +161,7 @@ class ControlPanel(QWidget):
     params_changed = pyqtSignal()
     clear_legs_requested = pyqtSignal()
     remove_leg_requested = pyqtSignal(int)
+    reset_view_requested = pyqtSignal()
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -301,6 +302,12 @@ class ControlPanel(QWidget):
         self.clear_legs_btn.setProperty("class", "secondary")
         self.clear_legs_btn.clicked.connect(lambda: self.clear_legs_requested.emit())
         leg_btn_row.addWidget(self.clear_legs_btn)
+        
+        self.reset_view_btn = QPushButton("Reset View")
+        self.reset_view_btn.setProperty("class", "secondary")
+        self.reset_view_btn.clicked.connect(lambda: self.reset_view_requested.emit())
+        leg_btn_row.addWidget(self.reset_view_btn)
+        
         self._layout.addLayout(leg_btn_row)
 
         hint = QLabel("Click Bid/Ask in chain, or edit cells directly")

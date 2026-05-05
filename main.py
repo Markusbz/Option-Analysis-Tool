@@ -23,6 +23,9 @@ import pyqtgraph as pg
 
 def main():
     """Initialize and launch the Options Analysis Tool."""
+    
+    # Silence Chromium console spam (must be set before QApplication)
+    os.environ["QTWEBENGINE_CHROMIUM_FLAGS"] = "--log-level=3 --disable-logging"
 
     # High-DPI
     QApplication.setHighDpiScaleFactorRoundingPolicy(

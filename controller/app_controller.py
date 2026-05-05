@@ -18,7 +18,7 @@ from datetime import datetime, date
 import logging
 
 import numpy as np
-import pandas as pd
+import pyqtgraph as pg
 from PyQt6.QtCore import QObject, QThread, QTimer, pyqtSignal, pyqtSlot
 from PyQt6.QtWidgets import QMessageBox
 
@@ -152,6 +152,7 @@ class AppController(QObject):
         self.cp.clear_legs_requested.connect(self._on_clear_legs)
         self.cp.remove_leg_requested.connect(self._on_remove_leg)
         self.cp.legs_changed.connect(self._on_legs_edited)
+        self.cp.reset_view_requested.connect(self._on_reset_view)
 
         # Connect option chain signals
         self.chain_widget.leg_added.connect(self._on_chain_leg_added)
@@ -244,6 +245,8 @@ class AppController(QObject):
         key = _STRATEGY_TEMPLATES.get(current_template)
         if key:
             self._build_strategy_from_template(key)
+        else:
+            self._on_reset_view()
 
     def _on_chain_error(self, msg: str):
         self.cp.set_status(f"\u2717 Chain: {msg}", Colors.ACCENT_RED)
@@ -292,6 +295,7 @@ class AppController(QObject):
         self._strategy.clear_legs()
         self._sync_legs_to_ui()
         self._refresh_all_charts()
+        self._on_reset_view()
 
     # ----- Strategy template -----------------------------------------------
 
@@ -382,6 +386,7 @@ class AppController(QObject):
 
         self._sync_legs_to_ui()
         self._refresh_all_charts()
+        self._on_reset_view()
 
     # ----- Sync strategy legs → legs table UI ------------------------------
 
@@ -458,7 +463,28 @@ class AppController(QObject):
             return max(actual - slider_dte, 0.0)
         return 0.0
 
-    # ----- Chart updates ---------------------------------------------------
+    # ----- Chart updates & panning -----------------------------------------
+
+    def _on_reset_view(self):
+        spot = self._spot
+        if spot <= 0:
+            return
+            
+        # PnL Chart
+        vb_pnl = self.pnl_chart.getPlotItem().vb
+        vb_pnl.setXRange(spot * 0.85, spot * 1.15, padding=0)
+        vb_pnl.enableAutoRange(axis=pg.ViewBox.YAxis)
+        vb_pnl.setAutoVisible(x=False, y=True)
+        
+        # Greek Chart
+        for p in self.greek_chart._plots:
+            p.vb.setXRange(spot * 0.85, spot * 1.15, padding=0)
+            p.vb.enableAutoRange(axis=pg.ViewBox.YAxis)
+            p.vb.setAutoVisible(x=False, y=True)
+            
+        if hasattr(self.greek_chart, "vb_gamma"):
+            self.greek_chart.vb_gamma.enableAutoRange(axis=pg.ViewBox.YAxis)
+            self.greek_chart.vb_gamma.setAutoVisible(x=False, y=True)
 
     def _refresh_all_charts(self):
         self._update_pnl()
@@ -468,12 +494,12 @@ class AppController(QObject):
         self._update_summary()
 
     def _spot_range(self):
-        """Generate a ±30% range around spot with 200 points."""
+        """Generate a fixed ±50% range around spot with 500 points."""
         if self._spot <= 0:
-            return np.linspace(50, 150, 200)
-        low = self._spot * 0.70
-        high = self._spot * 1.30
-        return np.linspace(low, high, 200)
+            return np.linspace(50, 150, 500)
+        low = self._spot * 0.50
+        high = self._spot * 1.50
+        return np.linspace(low, high, 500)
 
     def _update_pnl(self):
         if not self._strategy.legs:
@@ -625,12 +651,35 @@ class AppController(QObject):
                 
             greeks[name] = v
 
-        spot_range = self._spot_range()
         nearest_dte = self._strategy.nearest_dte()
-        pnl_exp = self._strategy.total_pnl(spot_range, iv_shift=iv_shift, dte_offset_days=nearest_dte)
         
-        max_profit = float(np.max(pnl_exp))
-        max_loss = float(np.min(pnl_exp))
+        # Evaluate at strikes + extreme bounds (0 and 1e6) to find true max profit/loss
+        strikes = [leg.strike for leg in self._strategy.legs]
+        test_spots = np.array([0.0, 1e6] + strikes)
+        pnl_test = self._strategy.total_pnl(test_spots, iv_shift=iv_shift, dte_offset_days=nearest_dte)
+        
+        pnl_zero = float(pnl_test[0])
+        pnl_inf = float(pnl_test[1])
+        local_pnl = np.concatenate(([pnl_zero], pnl_test[2:]))
+        
+        max_profit_val = float(np.max(local_pnl))
+        max_loss_val = float(np.min(local_pnl))
+        
+        if pnl_inf > 1e5:
+            max_profit_str = "Infinite"
+        else:
+            max_profit_val = max(max_profit_val, pnl_inf)
+            max_profit_str = f"${max_profit_val:+,.0f}"
+            
+        if pnl_inf < -1e5:
+            max_loss_str = "Infinite"
+        else:
+            max_loss_val = min(max_loss_val, pnl_inf)
+            max_loss_str = f"${max_loss_val:+,.0f}"
+
+        # Original spot range for breakevens
+        spot_range = self._spot_range()
+        pnl_exp = self._strategy.total_pnl(spot_range, iv_shift=iv_shift, dte_offset_days=nearest_dte)
 
         breakevens = []
         for i in range(len(pnl_exp) - 1):
@@ -640,4 +689,4 @@ class AppController(QObject):
                 be = x0 - y0 * (x1 - x0) / (y1 - y0)
                 breakevens.append(be)
 
-        self.summary_panel.update_summary(greeks, max_profit, max_loss, breakevens)
+        self.summary_panel.update_summary(greeks, max_profit_str, max_loss_str, breakevens)

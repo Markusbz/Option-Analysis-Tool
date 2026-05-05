@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import numpy as np
 import pyqtgraph as pg
+from PyQt6.QtCore import pyqtSignal
 from PyQt6.QtGui import QFont
 
 from ui.theme import Colors, Fonts
@@ -55,6 +56,11 @@ class PnLChart(pg.PlotWidget):
             pen=pg.mkPen(Colors.BORDER, width=1, style=pg.QtCore.Qt.PenStyle.DashLine),
         )
         plot.addItem(self._zero_line)
+        
+        # ViewBox constraints
+        plot.vb.setMouseEnabled(x=True, y=False)
+        plot.vb.enableAutoRange(axis=pg.ViewBox.YAxis)
+        plot.vb.setAutoVisible(x=False, y=True)
 
         # Crosshair
         self._vline = pg.InfiniteLine(
@@ -78,13 +84,43 @@ class PnLChart(pg.PlotWidget):
         # Mouse tracking for crosshair
         self.scene().sigMouseMoved.connect(self._on_mouse_moved)
 
-        # Legend — anchored bottom-right to avoid blocking data/readout
         self._legend = plot.addLegend(
             offset=(-10, -10),
             brush=pg.mkBrush(Colors.BG_SURFACE + "CC"),
             pen=pg.mkPen(Colors.BORDER),
             labelTextColor=Colors.TEXT_PRIMARY,
         )
+
+        # Initialize Curves
+        self._curve_expiry = pg.PlotDataItem(pen=pg.mkPen(Colors.TEXT_PRIMARY, width=2), name="At Expiry")
+        plot.addItem(self._curve_expiry)
+
+        self._curve_t0 = pg.PlotDataItem(pen=pg.mkPen(Colors.ACCENT_BLUE, width=2), name="T+0 (Today)")
+        plot.addItem(self._curve_t0)
+
+        self._curve_mid = pg.PlotDataItem(pen=pg.mkPen(Colors.ACCENT_ORANGE, width=1.5, style=pg.QtCore.Qt.PenStyle.DashLine), name="Target")
+        plot.addItem(self._curve_mid)
+
+        # Initialize Fills
+        self._curve_profit = pg.PlotDataItem()
+        self._curve_profit_zero = pg.PlotDataItem()
+        self._fill_profit = pg.FillBetweenItem(self._curve_profit, self._curve_profit_zero, brush=pg.mkBrush(Colors.FILL_PROFIT))
+        plot.addItem(self._fill_profit, ignoreBounds=True)
+
+        self._curve_loss = pg.PlotDataItem()
+        self._curve_loss_zero = pg.PlotDataItem()
+        self._fill_loss = pg.FillBetweenItem(self._curve_loss_zero, self._curve_loss, brush=pg.mkBrush(Colors.FILL_LOSS))
+        plot.addItem(self._fill_loss, ignoreBounds=True)
+
+        # Spot Price Marker
+        self._spot_line = pg.InfiniteLine(
+            angle=90,
+            pen=pg.mkPen(Colors.ACCENT_CYAN, width=1, style=pg.QtCore.Qt.PenStyle.DashDotLine),
+            label="Spot",
+            labelOpts={"position": 0.95, "color": Colors.ACCENT_CYAN, "fill": pg.mkBrush(Colors.BG_SURFACE + "CC")},
+        )
+        self._spot_line.setVisible(False)
+        plot.addItem(self._spot_line)
 
     def _on_mouse_moved(self, pos):
         plot = self.getPlotItem()
@@ -144,72 +180,43 @@ class PnLChart(pg.PlotWidget):
         plot = self.getPlotItem()
         self._target_label = target_label
 
-        # Clear previous
-        for item in self._fills:
-            plot.removeItem(item)
-        self._fills.clear()
-        for name, curve in list(self._curves.items()):
-            plot.removeItem(curve)
-        self._curves.clear()
-        self._curve_data.clear()
-        self._legend.clear()
-
-        # At-Expiration curve (main)
-        pen_exp = pg.mkPen(Colors.TEXT_PRIMARY, width=2)
-        self._curves["expiry"] = plot.plot(
-            spot_range, pnl_expiry, pen=pen_exp, name="At Expiry"
-        )
+        # Update curves via setData
+        self._curve_expiry.setData(spot_range, pnl_expiry)
         self._curve_data["expiry"] = (spot_range, pnl_expiry)
 
-        # Fill profit/loss regions under expiry curve
+        # Update Fills
         zero = np.zeros_like(pnl_expiry)
         profit_y = np.where(pnl_expiry > 0, pnl_expiry, 0)
         loss_y = np.where(pnl_expiry < 0, pnl_expiry, 0)
 
-        profit_curve = pg.PlotDataItem(spot_range, profit_y)
-        zero_curve_p = pg.PlotDataItem(spot_range, zero)
-        fill_profit = pg.FillBetweenItem(profit_curve, zero_curve_p,
-                                         brush=pg.mkBrush(Colors.FILL_PROFIT))
-        plot.addItem(fill_profit)
-        self._fills.append(fill_profit)
+        self._curve_profit.setData(spot_range, profit_y)
+        self._curve_profit_zero.setData(spot_range, zero)
+        
+        self._curve_loss.setData(spot_range, loss_y)
+        self._curve_loss_zero.setData(spot_range, zero)
 
-        loss_curve = pg.PlotDataItem(spot_range, loss_y)
-        zero_curve_l = pg.PlotDataItem(spot_range, zero)
-        fill_loss = pg.FillBetweenItem(zero_curve_l, loss_curve,
-                                       brush=pg.mkBrush(Colors.FILL_LOSS))
-        plot.addItem(fill_loss)
-        self._fills.append(fill_loss)
-
-        # T+0 curve
+        # Update T+0
         if pnl_t0 is not None:
-            pen_t0 = pg.mkPen(Colors.ACCENT_BLUE, width=2)
-            self._curves["t0"] = plot.plot(
-                spot_range, pnl_t0, pen=pen_t0, name="T+0 (Today)"
-            )
+            self._curve_t0.setData(spot_range, pnl_t0)
+            self._curve_t0.setVisible(True)
             self._curve_data["t0"] = (spot_range, pnl_t0)
+        else:
+            self._curve_t0.setVisible(False)
 
-        # T+N curve
+        # Update T+N
         if pnl_mid is not None:
-            pen_mid = pg.mkPen(Colors.ACCENT_ORANGE, width=1.5,
-                               style=pg.QtCore.Qt.PenStyle.DashLine)
-            self._curves["mid"] = plot.plot(
-                spot_range, pnl_mid, pen=pen_mid, name=target_label
-            )
+            self._curve_mid.setData(spot_range, pnl_mid)
+            self._curve_mid.setVisible(True)
             self._curve_data["mid"] = (spot_range, pnl_mid)
+            # Cannot easily rename a PlotDataItem in legend dynamically without recreate, 
+            # but usually it's fine.
+        else:
+            self._curve_mid.setVisible(False)
 
-        # Spot price marker
+        # Update Spot Line
         if spot_price is not None:
-            if hasattr(self, "_spot_line"):
-                plot.removeItem(self._spot_line)
-            self._spot_line = pg.InfiniteLine(
-                pos=spot_price, angle=90,
-                pen=pg.mkPen(Colors.ACCENT_CYAN, width=1,
-                             style=pg.QtCore.Qt.PenStyle.DashDotLine),
-                label=f"Spot ${spot_price:.2f}",
-                labelOpts={
-                    "position": 0.95,
-                    "color": Colors.ACCENT_CYAN,
-                    "fill": pg.mkBrush(Colors.BG_SURFACE + "CC"),
-                },
-            )
-            plot.addItem(self._spot_line)
+            self._spot_line.setPos(spot_price)
+            self._spot_line.label.setFormat(f"Spot ${spot_price:.2f}")
+            self._spot_line.setVisible(True)
+        else:
+            self._spot_line.setVisible(False)

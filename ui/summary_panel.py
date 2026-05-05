@@ -99,14 +99,14 @@ class SummaryPanel(QFrame):
         lbl.setStyleSheet(f"color: {Colors.TEXT_DISABLED}; font-size: 10px; font-weight: 800; border: none;")
         return lbl
 
-    def update_summary(self, greeks: dict, max_profit: float,
-                       max_loss: float, breakevens: list[float]):
+    def update_summary(self, greeks: dict, max_profit: str,
+                       max_loss: str, breakevens: list[float]):
         for name in ("delta", "gamma", "theta", "vega", "rho"):
             val = greeks.get(name, 0.0)
             self._labels[name].setText(f"{val:+.2f}")
 
-        self._labels["max_profit"].setText(f"${max_profit:+,.0f}")
-        self._labels["max_loss"].setText(f"${max_loss:+,.0f}")
+        self._labels["max_profit"].setText(max_profit)
+        self._labels["max_loss"].setText(max_loss)
 
         if breakevens:
             be_str = " / ".join(f"${b:.1f}" for b in breakevens[:3])

@@ -117,6 +117,10 @@ class GreekChart(QWidget):
                     linked_view.linkedViewChanged(view, linked_view.XAxis)
 
                 plot.vb.sigResized.connect(updateViews)
+                
+                self.vb_gamma.setMouseEnabled(x=True, y=False)
+                self.vb_gamma.enableAutoRange(axis=pg.ViewBox.YAxis)
+                self.vb_gamma.setAutoVisible(x=False, y=True)
 
             # Zero line
             zero = pg.InfiniteLine(
@@ -136,6 +140,11 @@ class GreekChart(QWidget):
             plot.addItem(vline, ignoreBounds=True)
             self._crosshairs.append(vline)
 
+            # ViewBox constraints
+            plot.vb.setMouseEnabled(x=True, y=False)
+            plot.vb.enableAutoRange(axis=pg.ViewBox.YAxis)
+            plot.vb.setAutoVisible(x=False, y=True)
+
             # Legend — anchored top-right
             plot.addLegend(
                 offset=(-10, 10),
@@ -149,6 +158,33 @@ class GreekChart(QWidget):
         # Link X-axes
         for i in range(1, _NUM_SUBPLOTS):
             self._plots[i].setXLink(self._plots[0])
+
+        # Initialize curves
+        self._curves = {}
+        for subplot_idx, name, display, color, width in _SUBPLOT_CONFIG:
+            pen = pg.mkPen(color, width=width)
+            curve = pg.PlotDataItem(pen=pen, name=display)
+            plot = self._plots[subplot_idx]
+            
+            if name == "gamma" and hasattr(self, "vb_gamma"):
+                self.vb_gamma.addItem(curve)
+                if plot.legend:
+                    plot.legend.addItem(curve, display)
+            else:
+                plot.addItem(curve)
+            
+            self._curves[name] = curve
+            
+        # Initialize spot lines
+        self._spot_lines = []
+        for plot in self._plots:
+            line = pg.InfiniteLine(
+                angle=90,
+                pen=pg.mkPen(Colors.ACCENT_CYAN, width=1, style=pg.QtCore.Qt.PenStyle.DashDotLine),
+            )
+            line.setVisible(False)
+            plot.addItem(line)
+            self._spot_lines.append(line)
 
         # Mouse tracking on the first plot (broadcasts to all via linked axes)
         for plot in self._plots:
@@ -205,63 +241,23 @@ class GreekChart(QWidget):
         spot_price : float, optional
             Current spot for vertical marker.
         """
-        # Clear old curves
-        for curve in self._curves.values():
-            if hasattr(self, "vb_gamma"):
-                try:
-                    self.vb_gamma.removeItem(curve)
-                except Exception:
-                    pass
-            for plot in self._plots:
-                try:
-                    plot.removeItem(curve)
-                except Exception:
-                    pass
-        self._curves.clear()
+        # Clear old data keys
         self._data.clear()
 
-        # Clear old legends
-        for plot in self._plots:
-            legend = plot.legend
-            if legend is not None:
-                legend.clear()
-
-        # Remove old spot lines
-        for line in self._spot_lines:
-            for plot in self._plots:
-                try:
-                    plot.removeItem(line)
-                except Exception:
-                    pass
-        self._spot_lines.clear()
-
-        # Draw curves
-        for subplot_idx, name, display, color, width in _SUBPLOT_CONFIG:
-            if name not in greeks:
-                continue
-            values = greeks[name]
-            plot = self._plots[subplot_idx]
-            pen = pg.mkPen(color, width=width)
-            
-            if name == "gamma" and hasattr(self, "vb_gamma"):
-                # Draw Gamma on the secondary ViewBox
-                curve = pg.PlotDataItem(spot_range, values, pen=pen, name=display)
-                self.vb_gamma.addItem(curve)
-                if plot.legend:
-                    plot.legend.addItem(curve, display)
+        # Update curves
+        for name, curve in self._curves.items():
+            if name in greeks:
+                values = greeks[name]
+                curve.setData(spot_range, values)
+                curve.setVisible(True)
+                self._data[name] = (spot_range, values)
             else:
-                curve = plot.plot(spot_range, values, pen=pen, name=display)
-                
-            self._curves[name] = curve
-            self._data[name] = (spot_range, values)
+                curve.setVisible(False)
 
-        # Spot price marker on all subplots
-        if spot_price is not None:
-            for plot in self._plots:
-                line = pg.InfiniteLine(
-                    pos=spot_price, angle=90,
-                    pen=pg.mkPen(Colors.ACCENT_CYAN, width=1,
-                                 style=pg.QtCore.Qt.PenStyle.DashDotLine),
-                )
-                plot.addItem(line)
-                self._spot_lines.append(line)
+        # Update spot price marker on all subplots
+        for line in self._spot_lines:
+            if spot_price is not None:
+                line.setPos(spot_price)
+                line.setVisible(True)
+            else:
+                line.setVisible(False)
